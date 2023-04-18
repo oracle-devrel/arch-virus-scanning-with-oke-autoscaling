@@ -595,10 +595,6 @@ In the Cloud UI see the custom log <code>scanning</code> for the <code>scanning-
 
 OKE cluster with oci cli access from localhost and OCI cloud shell
 
-## Notes/Issues
-
-## URLs
-
 ## Contributing
 This project is open source.  Please submit your contributions by forking this repository and submitting a pull request!  Oracle appreciates any contributions that are made by the open source community.
 
