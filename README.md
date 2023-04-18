@@ -15,7 +15,7 @@ The virus scanner uses a third-party named Trellix's free trial uvscan. The appl
 ### Clone the repo to localhost
 
 <pre>
-git clone https://github.com/mikarinneoracle/virus-scanning-on-OKE-with-autoscaler.git
+git clone https://github.com/oracle-devrel/arch-virus-scanning-with-oke-autoscaling
 </pre>
 
 ## Dynamic Groups and Policies
@@ -593,7 +593,7 @@ In the Cloud UI see the custom log <code>scanning</code> for the <code>scanning-
 
 ### Prerequisites
 
-OKE cluster with two node pools and oci cli access from localhost and OCI cloud shell
+OKE cluster with oci cli access from localhost and OCI cloud shell
 
 ## Notes/Issues
 
