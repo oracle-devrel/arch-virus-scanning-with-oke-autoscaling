@@ -591,7 +591,7 @@ In the Cloud UI see the custom log <code>scanning</code> for the <code>scanning-
 
 <img src="images/jobs-logs.png" width="800" />
 
-### Prerequisites
+## Prerequisites
 
 OKE cluster with oci cli access from localhost and OCI cloud shell
 
