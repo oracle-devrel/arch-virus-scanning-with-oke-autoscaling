@@ -1,0 +1,40 @@
+apiVersion: keda.sh/v1alpha1
+kind: ScaledJob
+metadata:
+  name: scanning-readq-job-scaler
+spec:
+  jobTargetRef:
+    template:
+      spec:
+        nodeSelector:
+          name: pool2
+        containers:
+        - name: scanning-readq-job
+          image: REGION-CODE.ocir.io/TENANCY-NAMESPACE/scanning-readq-job:1.0
+          imagePullPolicy: Always
+          resources:
+            requests:
+              cpu: "500m"
+          env:
+          - name: QUEUE
+            value: "ocid1.queue.oc1.."
+          - name: ENDPOINT
+            value: "https://cell-1.queue.messaging..oci.oraclecloud.com"
+          - name: LOG
+            value: "ocid1.log.oc1.."
+        restartPolicy: OnFailure
+        imagePullSecrets:
+        - name: ocirsecret
+    backoffLimit: 0  
+  pollingInterval: 5              # Optional. Default: 30 seconds
+  maxReplicaCount: 3              # Optional. Default: 100
+  successfulJobsHistoryLimit: 3   # Optional. Default: 100. How many completed jobs should be kept.
+  failedJobsHistoryLimit: 2       # Optional. Default: 100. How many failed jobs should be kept.
+  scalingStrategy:
+    strategy: "default"
+  triggers:
+    - type: metrics-api
+      metadata:
+        targetValue: "1"
+        url: "http://EXTERNAL-IP:3000/stats"
+        valueLocation: 'queueStats.queue.visibleMessages'
