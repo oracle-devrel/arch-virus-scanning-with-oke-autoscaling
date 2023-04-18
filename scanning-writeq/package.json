@@ -1,0 +1,14 @@
+{
+    "name": "microservices-writeq",
+    "version": "1.0.0",
+	"description": "function that writes the event to OCI queue",
+	"main": "func.js",
+	"author": "mika.rinne@oracle.com",
+	"license": "Apache-2.0",
+	"dependencies": {
+		"@fnproject/fdk": ">=0.0.48",
+        "oci-core": "^2.52.0",
+        "oci-common": "^2.52.0",
+        "oci-queue": "^2.52.0"
+	}
+}

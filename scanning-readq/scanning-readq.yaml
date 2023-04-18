@@ -1,0 +1,30 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: scanning-readq
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: scanning-readq
+      name: scanning-readq
+  template:
+    metadata:
+      labels:
+        app: scanning-readq
+        name: scanning-readq
+    spec:
+      containers:
+        - name: scanning-readq
+          image: REGION-CODE.ocir.io/TENANCY-NAMESPACE/scanning-readq:1.0
+          imagePullPolicy: Always
+          ports:
+          - containerPort: 3000
+            name: readq-http
+          env:
+          - name: QUEUE
+            value: "ocid1.queue.oc1.."
+          - name: ENDPOINT
+            value: "https://cell-1.queue.messaging..oci.oraclecloud.com"
+      imagePullSecrets:
+      - name: ocirsecret
