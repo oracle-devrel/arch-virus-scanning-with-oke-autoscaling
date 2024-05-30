@@ -151,7 +151,7 @@ spec:
             - --stderrthreshold=info
             - --cloud-provider=oci-oke
             - --max-node-provision-time=25m
-            - --nodes=0:5:ocid1.nodepool.oc1.eu-amsterdam-1.aaaaaaaai5kycirywaclyvroavanzyayel5sqxopoqy6eraidndjqf5vb64q
+            - --nodes=0:5:ocid1.nodepool.oc1.eu-amsterdam-1.aaaaaaaai....jqf5vb64q
             - --scale-down-delay-after-add=10m
             - --scale-down-unneeded-time=10m
             - --unremovable-node-recheck-timeout=5m
