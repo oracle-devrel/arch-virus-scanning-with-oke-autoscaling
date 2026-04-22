@@ -60,33 +60,54 @@ async function readQ() {
     }
 }
 
-async function writeLog(subject, type, data)
-{
+const { randomUUID } = require("crypto");
+
+async function writeLog(subject, type, data) {
   try {
-        const putLogsDetails = {
-          specversion: "1.0",
-          logEntryBatches: [
+    // Ensure data is always converted to a string
+    let message;
+
+    if (typeof data === "string") {
+      message = data;
+    } else if (data instanceof Error) {
+      message = data.message;
+    } else {
+      message = JSON.stringify(data);
+    }
+
+    // Prevent sending empty payloads (this caused the 400 error)
+    if (!message || !message.trim()) {
+      console.warn(`Skipping empty log payload for subject: ${subject}`);
+      return;
+    }
+
+    const putLogsDetails = {
+      specversion: "1.0",
+      logEntryBatches: [
+        {
+          entries: [
             {
-              entries: [
-                {
-                  id: "scanning-readq-job " + subject,
-                  data: data
-                }
-              ],
-              source: "OKE scanning-readq-job",
-              type: type,
-              subject: subject
+              id: randomUUID(),
+              data: message
             }
-          ]
-        };
-        var putLogsRequest = loggingingestion.requests.PutLogsRequest = {
-          logId: logId,
-          putLogsDetails: putLogsDetails,
-          timestampOpcAgentProcessing: new Date()
-        };
-        const putLogsResponse = await lClient.putLogs(putLogsRequest);
+          ],
+          source: "OKE scanning-readq-job",
+          type: type,
+          subject: subject
+        }
+      ]
+    };
+
+    const putLogsRequest = {
+      logId: logId,
+      putLogsDetails: putLogsDetails,
+      timestampOpcAgentProcessing: new Date()
+    };
+
+    await lClient.putLogs(putLogsRequest);
+
   } catch (err) {
-    console.error('Log error: ' + err.message);
+    console.error("Log error:", err.message);
   }
 }
 
