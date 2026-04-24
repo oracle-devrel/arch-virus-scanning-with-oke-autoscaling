@@ -42,7 +42,7 @@ variable "scanned_bucket_name" {
 
 variable "scanned_alert_bucket_name" {
   type    = string
-  default = "scanning-alert-ms"
+  default = "scanned-alert-ms"
 }
 
 variable "scanning_log_display_name" {

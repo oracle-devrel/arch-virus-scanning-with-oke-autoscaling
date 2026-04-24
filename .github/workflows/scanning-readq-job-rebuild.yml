@@ -1,0 +1,195 @@
+name: Rebuild scanning-readq-job with latest DAT
+
+on:
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+    inputs:
+      uvscan_archive_pattern:
+        description: 'Uvscan tar glob pattern in scanning-readq-job/ (e.g. cls-l64-*.tar.gz)'
+        required: false
+        default: 'cls-l64-*.tar.gz'
+        type: string
+      dat_file_pattern:
+        description: 'Regex pattern for DAT filename in updater listing'
+        required: false
+        default: 'avvdat-[0-9]+\.zip'
+        type: string
+      ocir_repository_name:
+        description: 'OCIR repository name (no registry prefix)'
+        required: false
+        default: 'scanning-readq-job'
+        type: string
+      enable_private_oke_endpoint:
+        description: 'Set true when using private OKE API endpoint (self-hosted runner required)'
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  rebuild:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      DAT_BASE_URL: https://update.nai.com/Products/commonupdater/current/vscandat1000/dat/0000/
+      UVSCAN_ARCHIVE_GLOB: ${{ inputs.uvscan_archive_pattern || 'cls-l64-*.tar.gz' }}
+      DAT_FILE_REGEX: ${{ inputs.dat_file_pattern || 'avvdat-[0-9]+\.zip' }}
+      OCI_CLI_USER: ${{ secrets.OCI_CLI_USER }}
+      OCI_CLI_TENANCY: ${{ secrets.OCI_CLI_TENANCY }}
+      OCI_CLI_FINGERPRINT: ${{ secrets.OCI_CLI_FINGERPRINT }}
+      OCI_CLI_KEY_CONTENT: ${{ secrets.OCI_CLI_KEY_CONTENT }}
+      OCI_CLI_REGION: ${{ secrets.OCI_CLI_REGION }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve latest DAT filename
+        id: dat
+        run: |
+          set -euo pipefail
+          latest_dat=$(curl -fsSL "${DAT_BASE_URL}" | grep -Eo "${DAT_FILE_REGEX}" | sort -Vu | tail -n1)
+
+          if [[ -z "${latest_dat}" ]]; then
+            echo "Could not determine latest DAT file from ${DAT_BASE_URL}"
+            exit 1
+          fi
+
+          dat_version="${latest_dat#avvdat-}"
+          dat_version="${dat_version%.zip}"
+          build_tag="${dat_version}"
+
+          echo "dat_file=${latest_dat}" >> "$GITHUB_OUTPUT"
+          echo "dat_version=${dat_version}" >> "$GITHUB_OUTPUT"
+          echo "build_tag=${build_tag}" >> "$GITHUB_OUTPUT"
+
+      - name: Configure kubectl for OKE
+        uses: oracle-actions/configure-kubectl-oke@v1
+        with:
+          cluster: ${{ secrets.OKE_CLUSTER_OCID }}
+          enablePrivateEndpoint: ${{ inputs.enable_private_oke_endpoint || false }}
+
+      - name: Compare deployed tag with latest DAT
+        id: compare
+        run: |
+          set -euo pipefail
+          current_image="$(kubectl get scaledjob scanning-readq-job-scaler -o jsonpath='{.spec.jobTargetRef.template.spec.containers[0].image}' 2>/dev/null || true)"
+          current_tag="${current_image##*:}"
+
+          if [[ -z "${current_image}" ]]; then
+            echo "ScaledJob not found; build and deploy are required."
+            echo "needs_update=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "Currently deployed image: ${current_image}"
+          echo "Current tag: ${current_tag}, Latest DAT tag: ${{ steps.dat.outputs.build_tag }}"
+
+          if [[ "${current_tag}" == "${{ steps.dat.outputs.build_tag }}" ]]; then
+            echo "DAT version unchanged. Skipping build and redeploy."
+            echo "needs_update=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "DAT changed. Proceeding with build and redeploy."
+            echo "needs_update=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Resolve uvscan archive
+        id: uvscan
+        if: steps.compare.outputs.needs_update == 'true'
+        env:
+          UVSCAN_ARCHIVE_URL: ${{ secrets.UVSCAN_ARCHIVE_URL }}
+        run: |
+          set -euo pipefail
+
+          shopt -s nullglob
+          archives=(scanning-readq-job/${UVSCAN_ARCHIVE_GLOB})
+          shopt -u nullglob
+
+          if [[ ${#archives[@]} -gt 0 ]]; then
+            archive_file=$(printf '%s\n' "${archives[@]##*/}" | sort -V | tail -n1)
+            echo "Using existing ${archive_file}"
+            echo "archive_file=${archive_file}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [[ -z "${UVSCAN_ARCHIVE_URL:-}" ]]; then
+            echo "No local uvscan archive matching ${UVSCAN_ARCHIVE_GLOB} and UVSCAN_ARCHIVE_URL is not set."
+            echo "Add an archive to scanning-readq-job/ or provide a downloadable URL in UVSCAN_ARCHIVE_URL."
+            exit 1
+          fi
+
+          archive_file="$(basename "${UVSCAN_ARCHIVE_URL%%\?*}")"
+          if [[ -z "${archive_file}" || "${archive_file}" == "/" ]]; then
+            archive_file="uvscan-archive.tar.gz"
+          fi
+
+          curl -fsSL "${UVSCAN_ARCHIVE_URL}" -o "scanning-readq-job/${archive_file}"
+          echo "archive_file=${archive_file}" >> "$GITHUB_OUTPUT"
+
+      - name: Download latest DAT file
+        if: steps.compare.outputs.needs_update == 'true'
+        run: |
+          set -euo pipefail
+          rm -f scanning-readq-job/avvdat-*.zip
+          curl -fsSL "${DAT_BASE_URL}${{ steps.dat.outputs.dat_file }}" -o "scanning-readq-job/${{ steps.dat.outputs.dat_file }}"
+
+      - name: Set up Docker Buildx
+        if: steps.compare.outputs.needs_update == 'true'
+        uses: docker/setup-buildx-action@v3
+
+      - name: Get or create OCIR repository
+        id: ocir-repo
+        if: steps.compare.outputs.needs_update == 'true'
+        uses: oracle-actions/get-ocir-repository@v1
+        with:
+          name: ${{ inputs.ocir_repository_name || 'scanning-readq-job' }}
+          compartment: ${{ secrets.OCI_COMPARTMENT_OCID }}
+
+      - name: Login to OCIR
+        if: steps.compare.outputs.needs_update == 'true'
+        uses: oracle-actions/login-ocir@v1
+        with:
+          auth_token: ${{ secrets.OCI_AUTH_TOKEN }}
+
+      - name: Build and push image
+        if: steps.compare.outputs.needs_update == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: ./scanning-readq-job
+          file: ./scanning-readq-job/Dockerfile
+          push: true
+          build-args: |
+            UVSCAN_ARCHIVE=${{ steps.uvscan.outputs.archive_file }}
+            DAT_FILE=${{ steps.dat.outputs.dat_file }}
+          tags: |
+            ${{ steps.ocir-repo.outputs.repo_path }}:latest
+            ${{ steps.ocir-repo.outputs.repo_path }}:${{ steps.dat.outputs.build_tag }}
+            ${{ steps.ocir-repo.outputs.repo_path }}:dat-${{ steps.dat.outputs.dat_version }}
+            ${{ steps.ocir-repo.outputs.repo_path }}:sha-${{ github.sha }}
+
+      - name: Render keda.yaml with build tag
+        if: steps.compare.outputs.needs_update == 'true'
+        run: |
+          set -euo pipefail
+          sed "s/IMAGE_BUILD_TAG/${{ steps.dat.outputs.build_tag }}/g" \
+            scanning-readq-job/keda.yaml.tpl > scanning-readq-job/keda.yaml
+          echo "Generated scanning-readq-job/keda.yaml with IMAGE_BUILD_TAG=${{ steps.dat.outputs.build_tag }}"
+
+      - name: Apply generated keda.yaml
+        if: steps.compare.outputs.needs_update == 'true'
+        run: |
+          set -euo pipefail
+          kubectl apply -f scanning-readq-job/keda.yaml
+
+      - name: Upload rendered keda manifest
+        if: steps.compare.outputs.needs_update == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: scanning-readq-job-keda-${{ steps.dat.outputs.build_tag }}
+          path: scanning-readq-job/keda.yaml
+
+      - name: No changes detected
+        if: steps.compare.outputs.needs_update != 'true'
+        run: |
+          echo "No DAT change detected. Build and redeploy were skipped."
