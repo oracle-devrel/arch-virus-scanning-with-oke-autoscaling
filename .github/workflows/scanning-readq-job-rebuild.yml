@@ -65,7 +65,7 @@ jobs:
           echo "build_tag=${build_tag}" >> "$GITHUB_OUTPUT"
 
       - name: Configure kubectl for OKE
-        uses: oracle-actions/configure-kubectl-oke@v1
+        uses: oracle-actions/configure-kubectl-oke@v1.5.0
         with:
           cluster: ${{ secrets.OKE_CLUSTER_OCID }}
           enablePrivateEndpoint: ${{ inputs.enable_private_oke_endpoint || false }}
@@ -141,14 +141,14 @@ jobs:
       - name: Get or create OCIR repository
         id: ocir-repo
         if: steps.compare.outputs.needs_update == 'true'
-        uses: oracle-actions/get-ocir-repository@v1
+        uses: oracle-actions/get-ocir-repository@v1.3.0
         with:
           name: ${{ inputs.ocir_repository_name || 'scanning-readq-job' }}
           compartment: ${{ secrets.OCI_COMPARTMENT_OCID }}
 
       - name: Login to OCIR
         if: steps.compare.outputs.needs_update == 'true'
-        uses: oracle-actions/login-ocir@v1
+        uses: oracle-actions/login-ocir@v1.3.0
         with:
           auth_token: ${{ secrets.OCI_AUTH_TOKEN }}
 
